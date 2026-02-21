@@ -56,6 +56,44 @@ python -m src.replay_gui --bars data/processed/bars_with_session.parquet
 GUI controls: session dropdown, Play/Pause, Step, Reset, speed slider, and scrub slider.
 Candles are rendered with matplotlib patches (`Rectangle`) and wick lines.
 
+## Control Center UI (`app_ui`)
+
+```bash
+python -m src.app_ui
+```
+
+The UI is designed to run fully offline against local files in this repo (no network dependency required at runtime).
+
+Required/preferred local artifacts:
+- required: `data/raw/mgc_bars.parquet`
+- preferred: `data/processed/bars_with_session.parquet`
+- preferred: `data/processed/features_after_k.parquet`
+- required for model inference: `data/outputs/model.joblib`
+- optional: `data/outputs/predictions.parquet`
+
+Startup behavior:
+- if `data/outputs/model.joblib` is missing, the signal area will indicate: **"Train model first."**
+- if current session bars are insufficient for first-K features, the signal area will indicate: **"not enough bars yet"**
+
+### Troubleshooting
+
+- **Missing processed parquet files** (`bars_with_session.parquet`, `features_after_k.parquet`):
+  run the minimal preprocessing path:
+
+  ```bash
+  python -m src.sessionize --input data/raw/mgc_bars.parquet
+  python -m src.labels --input data/processed/bars_with_session.parquet
+  python -m src.features --bars data/processed/bars_with_session.parquet --labels data/processed/session_labels.parquet
+  ```
+
+- **Need predictions table populated in the UI**:
+  run minimal predict steps:
+
+  ```bash
+  python -m src.train --features data/processed/features_after_k.parquet
+  python -m src.predict --features data/processed/features_after_k.parquet --model_path data/outputs/model.joblib
+  ```
+
 ## Today signal
 
 ```bash
