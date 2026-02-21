@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
 import subprocess
 import threading
 import tkinter as tk
@@ -13,8 +14,14 @@ from typing import Any
 import pandas as pd
 
 from src.predict import apply_bias
+from src.replay_gui import ReplayApp
 from src.run_today import generate_today_signal
 from src.utils.config import load_yaml
+
+
+def _run_replay_process(bars: pd.DataFrame, initial_session_id: str | None = None) -> None:
+    app = ReplayApp(bars, initial_session_id=initial_session_id)
+    app.mainloop()
 
 
 class AppUI(tk.Tk):
@@ -29,6 +36,7 @@ class AppUI(tk.Tk):
         self.pred_path = self.root_dir / "data/outputs/predictions.parquet"
         self.labels_path = self.root_dir / "data/processed/session_labels.parquet"
         self.features_path = self.root_dir / "data/processed/features_after_k.parquet"
+        self.bars_path = self.root_dir / "data/processed/bars_with_session.parquet"
 
         cfg = load_yaml(str(self.model_cfg_path)) if self.model_cfg_path.exists() else {"decision": {"th_long": 0.55, "th_short": 0.55}}
 
@@ -48,6 +56,7 @@ class AppUI(tk.Tk):
         self.filter_bias = tk.StringVar(value="ALL")
         self.last_n = tk.IntVar(value=20)
         self.include_train = tk.BooleanVar(value=False)
+        self._replay_processes: list[multiprocessing.Process] = []
 
         self._build_ui()
         self.refresh_data()
@@ -245,11 +254,22 @@ class AppUI(tk.Tk):
         item = self.tree.item(selected[0])
         session_id = item["values"][0]
         self.set_status(f"Replay target selected: {session_id}. Launching replay app.")
-        self.open_replay()
+        self.open_replay(session_id=str(session_id))
 
-    def open_replay(self) -> None:
-        cmd = ["python", "-m", "src.replay_gui", "--bars", "data/processed/bars_with_session.parquet"]
-        subprocess.Popen(cmd, cwd=self.root_dir)
+    def open_replay(self, session_id: str | None = None) -> None:
+        if not self.bars_path.exists():
+            messagebox.showerror("Replay", f"Bars file not found: {self.bars_path}")
+            return
+
+        bars_df = pd.read_parquet(self.bars_path)
+        replay_process = multiprocessing.Process(target=_run_replay_process, args=(bars_df, session_id), daemon=False)
+        replay_process.start()
+        self._replay_processes = [p for p in self._replay_processes if p.is_alive()]
+        self._replay_processes.append(replay_process)
+        if session_id:
+            self.set_status(f"Replay launched for session {session_id}")
+        else:
+            self.set_status("Replay launched")
 
     def run_pipeline(self) -> None:
         def task() -> None:

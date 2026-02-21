@@ -11,7 +11,7 @@ from matplotlib.patches import Rectangle
 
 
 class ReplayApp(tk.Tk):
-    def __init__(self, bars: pd.DataFrame):
+    def __init__(self, bars: pd.DataFrame, initial_session_id: str | None = None):
         super().__init__()
         self.title("MGC Session Replay")
         self.geometry("1200x700")
@@ -21,7 +21,12 @@ class ReplayApp(tk.Tk):
         self.playing = False
         self.speed_ms = tk.IntVar(value=200)
 
-        self.session_var = tk.StringVar(value=self.meta["session_id"].iloc[0])
+        session_id_values = self.meta["session_id"].astype(str)
+        default_session = session_id_values.iloc[0]
+        requested_session = str(initial_session_id) if initial_session_id is not None else None
+        selected_session = requested_session if requested_session in set(session_id_values.tolist()) else default_session
+
+        self.session_var = tk.StringVar(value=selected_session)
         top = ttk.Frame(self)
         top.pack(fill=tk.X)
         ttk.Label(top, text="Session:").pack(side=tk.LEFT)
@@ -108,9 +113,10 @@ class ReplayApp(tk.Tk):
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--bars", default="data/processed/bars_with_session.parquet")
+    p.add_argument("--session-id", default=None)
     args = p.parse_args()
     bars = pd.read_parquet(args.bars)
-    app = ReplayApp(bars)
+    app = ReplayApp(bars, initial_session_id=args.session_id)
     app.mainloop()
 
 
