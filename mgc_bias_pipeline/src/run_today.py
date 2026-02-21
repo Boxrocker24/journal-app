@@ -4,9 +4,9 @@ import argparse
 import json
 from datetime import datetime
 
-import joblib
 import pandas as pd
 
+from src.core.predict_core import compute_bias, load_model
 from src.features import build_features
 from src.labels import make_labels
 from src.sessionize import assign_sessions
@@ -33,12 +33,12 @@ def main() -> None:
     _, after_k = build_features(bars_s, labels, sessions_cfg, features_cfg)
     latest = after_k.sort_values("start_ts_et").tail(1)
 
-    bundle = joblib.load(args.model_path)
+    bundle = load_model(args.model_path)
     X = latest[[c for c in latest.columns if c not in {"y", "session_id", "start_ts_et"}]]
     p_bull = float(bundle["model"].predict_proba(X)[:, 1][0])
     th_long = model_cfg["decision"]["th_long"]
     th_short = model_cfg["decision"]["th_short"]
-    bias = "LONG" if p_bull >= th_long else ("SHORT" if (1 - p_bull) >= th_short else "NEUTRAL")
+    bias = compute_bias(p_bull, th_long, th_short)
 
     payload = {
         "session_id": latest["session_id"].iloc[0],
