@@ -3,51 +3,85 @@ from __future__ import annotations
 import argparse
 import json
 from datetime import datetime
-
-import pandas as pd
+from pathlib import Path
+from typing import Any
 
 from src.core.predict_core import compute_bias, load_model
-from src.features import build_features
-from src.labels import make_labels
-from src.sessionize import assign_sessions
+from src.core.today_features import prepare_today_features
 from src.utils.config import load_yaml
+
+
+def generate_today_signal(
+    *,
+    sessions_cfg: str = "configs/sessions.yaml",
+    features_cfg: str = "configs/features.yaml",
+    model_cfg: str = "configs/model.yaml",
+    model_path: str = "data/outputs/model.joblib",
+    bars_with_session: str = "data/processed/bars_with_session.parquet",
+    bars_raw: str = "data/raw/mgc_bars.parquet",
+) -> dict[str, Any]:
+    feat_result = prepare_today_features(
+        sessions_cfg_path=sessions_cfg,
+        features_cfg_path=features_cfg,
+        bars_with_session_path=bars_with_session,
+        raw_bars_path=bars_raw,
+    )
+    if feat_result["status"] != "ok":
+        return {
+            "prediction_ts_et": datetime.now().astimezone().isoformat(),
+            "p_bull": None,
+            "p_bear": None,
+            "bias": "NEUTRAL",
+            **{k: v for k, v in feat_result.items() if k != "features_df"},
+        }
+
+    cfg = load_yaml(model_cfg)
+    bundle = load_model(model_path)
+    latest = feat_result["features_df"]
+    X = latest[[c for c in latest.columns if c not in {"y", "session_id", "start_ts_et"}]]
+    p_bull = float(bundle["model"].predict_proba(X)[:, 1][0])
+    th_long = cfg["decision"]["th_long"]
+    th_short = cfg["decision"]["th_short"]
+
+    return {
+        "session_id": feat_result["session_id"],
+        "session_name": feat_result["session_name"],
+        "start_ts_et": str(feat_result["start_ts_et"]),
+        "cutoff_ts_et": str(feat_result["cutoff_ts_et"]),
+        "prediction_ts_et": datetime.now().astimezone().isoformat(),
+        "p_bull": p_bull,
+        "p_bear": 1 - p_bull,
+        "bias": compute_bias(p_bull, th_long, th_short),
+        "status": "ok",
+        "k_minutes": feat_result["k_minutes"],
+        "required_bars": feat_result["required_bars"],
+        "available_bars": feat_result["available_bars"],
+        "source": feat_result["source"],
+    }
 
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--bars", default="data/raw/mgc_bars.parquet")
     p.add_argument("--sessions_cfg", default="configs/sessions.yaml")
     p.add_argument("--features_cfg", default="configs/features.yaml")
     p.add_argument("--model_cfg", default="configs/model.yaml")
     p.add_argument("--model_path", default="data/outputs/model.joblib")
+    p.add_argument("--bars_with_session", default="data/processed/bars_with_session.parquet")
+    p.add_argument("--bars", default="data/raw/mgc_bars.parquet")
     p.add_argument("--out", default="data/outputs/today_signal.json")
     args = p.parse_args()
 
-    bars = pd.read_parquet(args.bars)
-    sessions_cfg = load_yaml(args.sessions_cfg)
-    features_cfg = load_yaml(args.features_cfg)
-    model_cfg = load_yaml(args.model_cfg)
-
-    bars_s, _ = assign_sessions(bars, sessions_cfg)
-    labels = make_labels(bars_s, model_cfg["label"]["delta"], model_cfg["label"]["drop_neutral"])
-    _, after_k = build_features(bars_s, labels, sessions_cfg, features_cfg)
-    latest = after_k.sort_values("start_ts_et").tail(1)
-
-    bundle = load_model(args.model_path)
-    X = latest[[c for c in latest.columns if c not in {"y", "session_id", "start_ts_et"}]]
-    p_bull = float(bundle["model"].predict_proba(X)[:, 1][0])
-    th_long = model_cfg["decision"]["th_long"]
-    th_short = model_cfg["decision"]["th_short"]
-    bias = compute_bias(p_bull, th_long, th_short)
-
-    payload = {
-        "session_id": latest["session_id"].iloc[0],
-        "prediction_ts_et": datetime.now().astimezone().isoformat(),
-        "p_bull": p_bull,
-        "p_bear": 1 - p_bull,
-        "bias": bias,
-    }
-    with open(args.out, "w", encoding="utf-8") as f:
+    payload = generate_today_signal(
+        sessions_cfg=args.sessions_cfg,
+        features_cfg=args.features_cfg,
+        model_cfg=args.model_cfg,
+        model_path=args.model_path,
+        bars_with_session=args.bars_with_session,
+        bars_raw=args.bars,
+    )
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
     print(json.dumps(payload))
 
