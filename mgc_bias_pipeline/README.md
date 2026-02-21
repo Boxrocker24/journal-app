@@ -26,6 +26,8 @@ Timestamps may be naive or tz-aware. Naive timestamps are treated as UTC then co
 
 ```bash
 python -m src.ingest --input /path/to/mgc.csv --out data/raw/mgc_bars.parquet
+# or pull directly from an endpoint
+python -m src.ingest --endpoint https://api.example.com/mgc/bars --endpoint-format json --records-path data.bars --query symbol=MGC --query timeframe=5m --header Authorization=Bearer\ <token> --out data/raw/mgc_bars.parquet
 python -m src.sessionize --input data/raw/mgc_bars.parquet
 python -m src.labels --input data/processed/bars_with_session.parquet
 python -m src.features --bars data/processed/bars_with_session.parquet --labels data/processed/session_labels.parquet
@@ -71,6 +73,24 @@ Writes `data/outputs/today_signal.json` and prints JSON:
 - `features_after_k` uses bars where `ts_et < session_start + K minutes` only.
 - Session assignment is deterministic and handles cross-midnight windows.
 
-## Extending data source
+## Endpoint ingestion (no manual file prep)
 
-- TODO (optional): add broker/API pull module and map output into ingest schema.
+`src.ingest` can now pull data directly from an HTTP endpoint and normalize common field aliases automatically:
+
+- timestamp aliases: `ts`, `timestamp`, `datetime`, `time`, `date`, `t`
+- OHLC aliases: `open/o`, `high/h`, `low/l`, `close/c`
+
+Example JSON payload shapes supported:
+
+- top-level list: `[{...}, {...}]`
+- nested list/object via `--records-path` (e.g. `data.bars`)
+
+CLI flags:
+
+- `--endpoint`: URL to fetch
+- `--endpoint-format`: `json` (default), `csv`, `parquet`
+- `--records-path`: dot-path within JSON response
+- `--query key=value`: repeatable query params
+- `--header key=value`: repeatable request headers
+
+This lets you run the full pipeline without manually shaping CSV/Parquet files first.
