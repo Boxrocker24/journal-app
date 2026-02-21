@@ -9,6 +9,7 @@ from typing import Any
 from src.core.predict_core import compute_bias, load_model
 from src.core.today_features import prepare_today_features
 from src.utils.config import load_yaml
+from src.utils.ui_helpers import append_signal_log_row
 
 
 def generate_today_signal(
@@ -19,6 +20,7 @@ def generate_today_signal(
     model_path: str = "data/outputs/model.joblib",
     bars_with_session: str = "data/processed/bars_with_session.parquet",
     bars_raw: str = "data/raw/mgc_bars.parquet",
+    signal_log_path: str = "data/outputs/today_signal_log.csv",
 ) -> dict[str, Any]:
     feat_result = prepare_today_features(
         sessions_cfg_path=sessions_cfg,
@@ -42,6 +44,22 @@ def generate_today_signal(
     p_bull = float(bundle["model"].predict_proba(X)[:, 1][0])
     th_long = cfg["decision"]["th_long"]
     th_short = cfg["decision"]["th_short"]
+    bias = compute_bias(p_bull, th_long, th_short)
+    p_bear = 1 - p_bull
+    conf = max(p_bull, p_bear)
+    model_version = str(bundle.get("trained_at", "unknown"))
+
+    append_signal_log_row(
+        signal_log_path,
+        session_id=str(feat_result["session_id"]),
+        p_bull=p_bull,
+        p_bear=p_bear,
+        conf=conf,
+        bias=bias,
+        th_long=float(th_long),
+        th_short=float(th_short),
+        model_version=model_version,
+    )
 
     return {
         "session_id": feat_result["session_id"],
@@ -50,8 +68,12 @@ def generate_today_signal(
         "cutoff_ts_et": str(feat_result["cutoff_ts_et"]),
         "prediction_ts_et": datetime.now().astimezone().isoformat(),
         "p_bull": p_bull,
-        "p_bear": 1 - p_bull,
-        "bias": compute_bias(p_bull, th_long, th_short),
+        "p_bear": p_bear,
+        "bias": bias,
+        "conf": conf,
+        "th_long": th_long,
+        "th_short": th_short,
+        "model_version": model_version,
         "status": "ok",
         "k_minutes": feat_result["k_minutes"],
         "required_bars": feat_result["required_bars"],
@@ -69,6 +91,7 @@ def main() -> None:
     p.add_argument("--bars_with_session", default="data/processed/bars_with_session.parquet")
     p.add_argument("--bars", default="data/raw/mgc_bars.parquet")
     p.add_argument("--out", default="data/outputs/today_signal.json")
+    p.add_argument("--signal_log", default="data/outputs/today_signal_log.csv")
     args = p.parse_args()
 
     payload = generate_today_signal(
@@ -78,6 +101,7 @@ def main() -> None:
         model_path=args.model_path,
         bars_with_session=args.bars_with_session,
         bars_raw=args.bars,
+        signal_log_path=args.signal_log,
     )
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)

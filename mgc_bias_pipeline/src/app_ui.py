@@ -34,6 +34,7 @@ class AppUI(tk.Tk):
         self.model_cfg_path = self.root_dir / "configs/model.yaml"
         self.today_path = self.root_dir / "data/outputs/today_signal.json"
         self.pred_path = self.root_dir / "data/outputs/predictions.parquet"
+        self.signal_log_path = self.root_dir / "data/outputs/today_signal_log.csv"
         self.labels_path = self.root_dir / "data/processed/session_labels.parquet"
         self.features_path = self.root_dir / "data/processed/features_after_k.parquet"
         self.bars_path = self.root_dir / "data/processed/bars_with_session.parquet"
@@ -193,6 +194,7 @@ class AppUI(tk.Tk):
                     model_path="data/outputs/model.joblib",
                     bars_with_session="data/processed/bars_with_session.parquet",
                     bars_raw="data/raw/mgc_bars.parquet",
+                    signal_log_path=str(self.signal_log_path),
                 )
                 today = live_today
                 self.today_path.parent.mkdir(parents=True, exist_ok=True)
