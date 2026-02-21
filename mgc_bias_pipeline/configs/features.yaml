@@ -1,0 +1,5 @@
+pre_session:
+  rolling_sessions: 10
+early_session:
+  k_minutes: 30
+bar_interval_minutes: 5

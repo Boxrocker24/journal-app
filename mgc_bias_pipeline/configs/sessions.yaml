@@ -1,0 +1,13 @@
+timezone: America/New_York
+sessions:
+  - name: ASIA
+    start: "18:00"
+    end: "02:00"
+  - name: LONDON
+    start: "02:00"
+    end: "08:20"
+  - name: NY
+    start: "08:20"
+    end: "17:00"
+focus_sessions: ["NY"]
+early_k_minutes: 30
