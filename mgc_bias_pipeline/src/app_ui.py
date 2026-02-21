@@ -13,6 +13,7 @@ from typing import Any
 import pandas as pd
 
 from src.predict import apply_bias
+from src.run_today import generate_today_signal
 from src.utils.config import load_yaml
 
 
@@ -175,6 +176,21 @@ class AppUI(tk.Tk):
             today = {}
             if self.today_path.exists():
                 today = json.loads(self.today_path.read_text(encoding="utf-8"))
+            try:
+                live_today = generate_today_signal(
+                    sessions_cfg="configs/sessions.yaml",
+                    features_cfg="configs/features.yaml",
+                    model_cfg=str(self.model_cfg_path),
+                    model_path="data/outputs/model.joblib",
+                    bars_with_session="data/processed/bars_with_session.parquet",
+                    bars_raw="data/raw/mgc_bars.parquet",
+                )
+                today = live_today
+                self.today_path.parent.mkdir(parents=True, exist_ok=True)
+                self.today_path.write_text(json.dumps(live_today, indent=2), encoding="utf-8")
+            except Exception:
+                # If live recompute fails, keep the last saved payload.
+                pass
             pred = pd.read_parquet(self.pred_path) if self.pred_path.exists() else pd.DataFrame()
             labels = pd.read_parquet(self.labels_path) if self.labels_path.exists() else pd.DataFrame()
             feats = pd.read_parquet(self.features_path) if self.features_path.exists() else pd.DataFrame()
